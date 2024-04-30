@@ -38,6 +38,11 @@ import org.apache.lucene.store.Directory;
 
 import com.opencsv.CSVReader;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class LuceneVectorSearchExample {
 
   public static String vectorColName = null;
@@ -52,12 +57,14 @@ public class LuceneVectorSearchExample {
     int numDocs = Integer.valueOf(args[3]);
     int dims = Integer.valueOf(args[4]);
     String queryFile = args[5];
+    int numThreads = Integer.valueOf(args[6]);
     System.out.println("Dataset file used is: " + datasetFile);
     System.out.println("Index of vector field is: " + indexOfVector);
     System.out.println("Name of the vector field is: " + vectorColName);
     System.out.println("Number of documents to be indexed are: " + numDocs);
     System.out.println("Number of dimensions are: " + dims);
     System.out.println("Query file used is: " + queryFile);
+    System.out.println("Number of threads to be used is:" + numThreads);
 
     // [1] Setup the index
     Directory index = new ByteBuffersDirectory();
@@ -66,6 +73,7 @@ public class LuceneVectorSearchExample {
 
     // [2] Index
     long startTime = System.currentTimeMillis();
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
     {
       InputStreamReader isr = null;
       IndexWriter writer = new IndexWriter(index, config);
@@ -79,27 +87,43 @@ public class LuceneVectorSearchExample {
       CSVReader reader = new CSVReader(isr);
       String[] line;
       int count = 0;
-      while ((line = reader.readNext()) != null) {
+      AtomicBoolean allDocsProcessed = new AtomicBoolean(false); // Flag to indicate all documents have been processed
+      while ((line = reader.readNext()) != null && !allDocsProcessed.get()) {
         if ((count++) == 0)
           continue; // skip the first line of the file, it is a header
-        Document doc = new Document();
-        doc.add(new StringField("id", "" + (count - 2), Field.Store.YES));
-        doc.add(new StringField("url", line[1], Field.Store.YES));
-        doc.add(new StringField("title", line[2], Field.Store.YES));
-        doc.add(new TextField("text", line[3], Field.Store.YES));
-        float[] contentVector = reduceDimensionVector(parseFloatArrayFromStringArray(line[5]), dims);
-        doc.add(new KnnFloatVectorField(vectorColName, contentVector, VectorSimilarityFunction.EUCLIDEAN));
-        doc.add(new StringField("vector_id", line[6], Field.Store.YES));
-
-        if (count % 500 == 0)
-          writer.commit();
-        if (count % 5000 == 0)
-          System.out.println(count + " docs indexed ...");
-        writer.addDocument(doc);
-        if (count == numDocs)
-          break;
+        final String[] currentLine = line;
+        final int currentCount = count;
+	executor.submit(() -> {
+          try {
+	        Document doc = new Document();
+                doc.add(new StringField("id", "" + (currentCount - 2), Field.Store.YES));
+                doc.add(new StringField("url", currentLine[1], Field.Store.YES));
+                doc.add(new StringField("title", currentLine[2], Field.Store.YES));
+                doc.add(new TextField("text", currentLine[3], Field.Store.YES));
+                float[] contentVector = reduceDimensionVector(parseFloatArrayFromStringArray(currentLine[5]), dims);
+                doc.add(new KnnFloatVectorField(vectorColName, contentVector, VectorSimilarityFunction.EUCLIDEAN));
+                doc.add(new StringField("vector_id", currentLine[6], Field.Store.YES));
+                synchronized(writer) {
+                  if (currentCount % 500 == 0)
+                    writer.commit();
+                  if (currentCount % 5000 == 0)
+                    System.out.println(currentCount + " docs indexed ...");
+		}
+		writer.addDocument(doc);
+                if (currentCount == numDocs)
+                  allDocsProcessed.set(true);
+              } catch (Exception e) {
+                  e.printStackTrace();
+              }
+          });
       }
-      writer.commit();
+          executor.shutdown();
+          try {
+            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+          } catch (InterruptedException e) {
+              e.printStackTrace();
+          }
+          writer.commit();
     }
 
     System.out.println("Time taken for index building (end to end): " + (System.currentTimeMillis() - startTime));
