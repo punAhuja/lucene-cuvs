@@ -22,10 +22,10 @@ Set the correct path for Raft in `cuda/CMakeLists.txt` file. Then, proceed to ru
 
     wget -c https://cdn.openai.com/API/examples/data/vector_database_wikipedia_articles_embedded.zip
     mvn package
-    java -jar lucene/target/cuvs-searcher-lucene-0.0.1-SNAPSHOT-jar-with-dependencies.jar <datasetfile> <vector_index_column> <name_of_vector_field> <numDocs> <dimensions> <queryFile>
+    java -jar lucene/target/cuvs-searcher-lucene-0.0.1-SNAPSHOT-jar-with-dependencies.jar <datasetfile> <vector_index_column> <name_of_vector_field> <numDocs> <dimensions> <queryFile> <numOfThreads>
 
     # Example
-    java -jar lucene/target/cuvs-searcher-lucene-0.0.1-SNAPSHOT-jar-with-dependencies.jar vector_database_wikipedia_articles_embedded.zip 5 content_vector 25000 768 query.txt
+    java -jar lucene/target/cuvs-searcher-lucene-0.0.1-SNAPSHOT-jar-with-dependencies.jar vector_database_wikipedia_articles_embedded.zip 5 content_vector 25000 768 query.txt 4
 
 
 ## Benchmarks
