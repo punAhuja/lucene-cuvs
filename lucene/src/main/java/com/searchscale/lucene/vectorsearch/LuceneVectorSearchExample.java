@@ -37,7 +37,7 @@ import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 
 import com.opencsv.CSVReader;
-
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -80,7 +80,13 @@ public class LuceneVectorSearchExample {
       if (datasetFile.endsWith(".zip")) {
         ZipFile zip = new ZipFile(datasetFile);
         isr = new InputStreamReader(zip.getInputStream(zip.entries().nextElement()));
-      } else {
+      }
+      else if(datasetFile.endsWith(".bz2")){
+        FileInputStream fis = new FileInputStream(datasetFile);
+        BZip2CompressorInputStream bis = new BZip2CompressorInputStream(fis);
+        isr = new InputStreamReader(bis);
+      }
+      else {
         isr = new InputStreamReader(new FileInputStream(datasetFile));
       }
 
@@ -97,12 +103,10 @@ public class LuceneVectorSearchExample {
           try {
 	        Document doc = new Document();
                 doc.add(new StringField("id", "" + (currentCount - 2), Field.Store.YES));
-                doc.add(new StringField("url", currentLine[1], Field.Store.YES));
-                doc.add(new StringField("title", currentLine[2], Field.Store.YES));
-                doc.add(new TextField("text", currentLine[3], Field.Store.YES));
-                float[] contentVector = reduceDimensionVector(parseFloatArrayFromStringArray(currentLine[5]), dims);
+                doc.add(new StringField("title", currentLine[1], Field.Store.YES));
+                doc.add(new TextField("article", currentLine[2], Field.Store.YES));
+                float[] contentVector = reduceDimensionVector(parseFloatArrayFromStringArray(currentLine[3]), dims);
                 doc.add(new KnnFloatVectorField(vectorColName, contentVector, VectorSimilarityFunction.EUCLIDEAN));
-                doc.add(new StringField("vector_id", currentLine[6], Field.Store.YES));
                 synchronized(writer) {
                   if (currentCount % 500 == 0)
                     writer.commit();
